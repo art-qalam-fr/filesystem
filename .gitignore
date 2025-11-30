@@ -1,0 +1,20 @@
+# Fichiers et dossiers ignorés par Git pour des raisons de sécurité et de propreté du dépôt
+
+# Fichiers d'environnement
+.env
+
+# Fichiers de configuration sensibles
+config.json
+
+# Dossiers spécifiques au projet
+.llm-context/
+PRD/
+prd-templates/
+logs/
+
+# Dossiers de configuration de l'IDE et de l'environnement de développement
+.vscode/
+.windsurf/
+
+# Autres fichiers ou dossiers générés
+# (Ajoutez ici d'autres éléments si nécessaire, par exemple node_modules, build, dist, etc.)
