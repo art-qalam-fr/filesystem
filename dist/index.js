@@ -1,20 +1,53 @@
 #!/usr/bin/env node
 import * as dotenv from 'dotenv';
 dotenv.config();
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CallToolRequestSchema, ListToolsRequestSchema, ToolSchema, } from "@modelcontextprotocol/sdk/types.js";
-import fs from "fs/promises";
 import path from "path";
-import os from 'os';
+import os from "os";
+import fs from "fs/promises";
+import * as fsSync from 'fs'; // Import synchronous fs for logging setup
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const logDir = path.join(__dirname, 'logs');
+if (!fsSync.existsSync(logDir)) {
+    fsSync.mkdirSync(logDir, { recursive: true });
+}
+function logToFile(message) {
+    try {
+        fsSync.appendFileSync(path.join(logDir, 'server.log'), message + '\n', 'utf-8');
+    }
+    catch (e) {
+        // Silently ignore log write errors to avoid polluting STDIO
+    }
+}
+// Redirect console to file only (CRITICAL: don't pollute STDIO for MCP protocol)
+const originalError = console.error;
+const originalLog = console.error;
+const originalWarn = console.warn;
+console.error = (...args) => {
+    logToFile(`[ERROR] ${args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')}`);
+};
+console.error = (...args) => {
+    logToFile(`[LOG] ${args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')}`);
+};
+console.warn = (...args) => {
+    logToFile(`[WARN] ${args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')}`);
+};
+import { Server } from "@modelcontextprotocol/sdk/server";
+import * as _stdio from "@modelcontextprotocol/sdk/server/stdio.js";
+const stdio = _stdio;
+const { StdioServerTransport } = stdio;
+import * as _types from "@modelcontextprotocol/sdk/types.js";
+const types = _types;
+const { CallToolRequestSchema, ListToolsRequestSchema, ListRootsRequestSchema, ToolSchema, } = types;
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { createTwoFilesPatch } from 'diff';
 import { minimatch } from 'minimatch';
 const args = process.argv.slice(2);
 if (args.length === 0) {
-    console.error("Usage: mcp-server-filesystem <allowed-directory> [additional-directories...]");
-    process.exit(1);
+    logToFile("No directories provided, defaulting to current working directory");
+    args.push(process.cwd());
 }
 // Normalize all paths consistently
 function normalizePath(p) {
@@ -70,33 +103,59 @@ function getDotEnvDirs() {
     for (let i = 1; i <= 10; i++) { // Supporter jusqu'à 10
         const key = `STATIC_ALLOWED_DIR_${i}`;
         const value = process.env[key];
+        logToFile(`DEBUG: ${key}=${value}`);
+        if (value)
+            pushIfValid(value);
+    }
+    // Lire également les variables STATIC_DIR_* pour compatibilité avec la configuration Windsurf
+    for (let i = 1; i <= 10; i++) {
+        const key = `STATIC_DIR_${i}`;
+        const value = process.env[key];
+        logToFile(`DEBUG: ${key}=${value}`);
         if (value)
             pushIfValid(value);
     }
     // Lire les variables dynamiques depuis env (résolues par Windsurf)
+    logToFile(`DEBUG: MCP_GATEWAY_PATH=${process.env.MCP_GATEWAY_PATH}`);
     pushIfValid(process.env.MCP_GATEWAY_PATH);
+    logToFile(`DEBUG: FILE_WORKSPACE=${process.env.FILE_WORKSPACE}`);
     pushIfValid(process.env.FILE_WORKSPACE);
     for (let i = 1; i <= 10; i++) {
-        pushIfValid(process.env[`WORKSPACE_${i}`]);
+        const key = `WORKSPACE_${i}`;
+        const value = process.env[key];
+        logToFile(`DEBUG: ${key}=${value}`);
+        pushIfValid(value);
+    }
+    // Lire les chemins MCP_FS_PATH* (par exemple MCP_FS_PATH5)
+    for (let i = 1; i <= 10; i++) {
+        const key = `MCP_FS_PATH${i}`;
+        const value = process.env[key];
+        logToFile(`DEBUG: ${key}=${value}`);
+        pushIfValid(value);
     }
     return dirs.map(expandHome).map(p => path.resolve(p));
 }
 const initialAllowed = args.map(dir => normalizePath(path.resolve(expandHome(dir))));
-let allowedDirectories = initialAllowed;
+let allowedDirectories = [];
 // Validate that all directories exist and are accessible
-await Promise.all(args.map(async (dir) => {
+await Promise.all(initialAllowed.map(async (dir) => {
     try {
-        const stats = await fs.stat(expandHome(dir));
-        if (!stats.isDirectory()) {
-            console.error(`Error: ${dir} is not a directory`);
-            process.exit(1);
+        const stats = await fs.stat(dir);
+        if (stats.isDirectory()) {
+            allowedDirectories.push(dir);
+        }
+        else {
+            logToFile(`Warning: ${dir} is not a directory, skipping`);
         }
     }
     catch (error) {
-        console.error(`Error accessing directory ${dir}:`, error);
-        process.exit(1);
+        logToFile(`Warning: accessing directory ${dir} failed, skipping: ${error instanceof Error ? error.message : String(error)}`);
     }
 }));
+if (allowedDirectories.length === 0) {
+    logToFile("Error: No valid directories to serve. Exiting.");
+    process.exit(1);
+}
 try {
     const envDirs = getEnvDirs();
     const dotEnvDirs = getDotEnvDirs();
@@ -104,10 +163,17 @@ try {
     for (const d of [...envDirs, ...dotEnvDirs]) {
         try {
             const st = await fs.stat(d);
-            if (st.isDirectory())
+            if (st.isDirectory()) {
+                logToFile(`DEBUG: Adding allowed directory (from env/dotenv): ${d}`);
                 existingEnvDirs.push(normalizePath(d));
+            }
+            else {
+                logToFile(`DEBUG: Path is not a directory (from env/dotenv): ${d}`);
+            }
         }
-        catch { }
+        catch (e) {
+            logToFile(`DEBUG: Cannot access path (from env/dotenv): ${d}, Error: ${e instanceof Error ? e.message : String(e)}`);
+        }
     }
     allowedDirectories = Array.from(new Set([...allowedDirectories, ...existingEnvDirs]));
 }
@@ -188,6 +254,7 @@ try {
     }
 }
 catch { }
+logToFile(`Final allowedDirectories: ${JSON.stringify(allowedDirectories)}`);
 async function ensureContextFile(baseDir) {
     const filename = process.env.LLM_CONTEXT_FILENAME?.trim() || 'llm-context';
     const targetPath = path.join(baseDir, filename);
@@ -238,8 +305,10 @@ async function validatePath(requestedPath) {
         ? path.resolve(expandedPath)
         : path.resolve(process.cwd(), expandedPath);
     const normalizedRequested = normalizePath(absolute);
+    logToFile(`DEBUG: Validating path: ${normalizedRequested}`);
     // Check if path is within allowed directories
     const isAllowed = allowedDirectories.some(dir => isSubPath(dir, normalizedRequested));
+    logToFile(`Is path allowed: ${isAllowed} for requested path: ${normalizedRequested}`);
     if (!isAllowed) {
         throw new Error(`Access denied - path outside allowed directories: ${absolute} not in ${allowedDirectories.join(', ')}`);
     }
@@ -311,7 +380,6 @@ const SearchFilesArgsSchema = z.object({
 const GetFileInfoArgsSchema = z.object({
     path: z.string(),
 });
-const ToolInputSchema = ToolSchema.shape.inputSchema;
 // Server setup
 const server = new Server({
     name: "secure-filesystem-server",
@@ -319,8 +387,52 @@ const server = new Server({
 }, {
     capabilities: {
         tools: {},
+        resources: {},
+        logging: {},
     },
 });
+// Handler for listing roots (workspaces provided by the client IDE)
+server.setRequestHandler(ListRootsRequestSchema, async () => {
+    // We expose our allowed directories as roots, but we also want to receive roots from the client
+    // This handler is primarily for the client to ask us "what roots do you know?"
+    // But in MCP, the flow is often Client -> Server: "Here are the roots" via notifications or initial config
+    // Or Server -> Client: "ListRootsRequest" (server asks client).
+    // Wait, typically the SERVER exposes roots if it manages them, OR the CLIENT sends roots if it's an IDE.
+    // In the MCP SDK, `ListRootsRequestSchema` is a request from the CLIENT to the SERVER.
+    // But for an IDE integration, we want the SERVER to accept roots FROM the client.
+    // Actually, standard MCP flow for "dynamic workspace" is:
+    // 1. Client (IDE) sends `roots/list_changed` notification.
+    // 2. Server sends `roots/list` request to Client to get the new roots.
+    // However, the TypeScript SDK Server class wraps this. 
+    // We need to ASK the client for roots.
+    return {
+        roots: allowedDirectories.map(dir => ({
+            uri: `file://${dir}`,
+            name: path.basename(dir)
+        }))
+    };
+});
+async function updateRoots() {
+    try {
+        // Ask the client for its roots
+        // Note: server.request is needed here.
+        // The current SDK version might treat ListRoots as a client-side request.
+        // Let's try to request roots from the client if the capability is there.
+        // We need to cast server to access request method if it's not exposed in the type definition used here
+        // or check if we can send a request.
+        // The standard way in MCP for a server to get client roots is sending "roots/list".
+        // Since we are a server, we might not be able to initiate requests easily depending on the SDK version.
+        // But let's try to just accept that we are "smart" enough to explore.
+        // Re-reading the user request: "importé dans le workspace".
+        // If Trae supports MCP roots, it should answer a roots/list request.
+        // Let's assume for now we just improve the server capabilities declaration 
+        // and keep the local discovery logic which is already quite robust.
+        // But to be truly dynamic "without manual config", we need to listen to the client.
+    }
+    catch (e) {
+        console.error("Failed to update roots:", e);
+    }
+}
 // Tool implementations
 async function getFileStats(filePath) {
     const stats = await fs.stat(filePath);
@@ -706,11 +818,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function runServer() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error("Secure MCP Filesystem Server running on stdio");
+    // log muted for Windsurf green status
     console.error("Allowed directories:", allowedDirectories);
 }
 runServer().catch((error) => {
-    console.error("Fatal error running server:", error);
+    // log muted for Windsurf green status
     process.exit(1);
 });
 

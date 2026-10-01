@@ -18,3 +18,14 @@ logs/
 
 # Autres fichiers ou dossiers générés
 # (Ajoutez ici d'autres éléments si nécessaire, par exemple node_modules, build, dist, etc.)
+node_modules
+node_modules
+
+# snapshot kit
+.env
+*.env.local
+*.log
+*.pid
+__pycache__/
+*.backup
+lottery-prediction-ai/

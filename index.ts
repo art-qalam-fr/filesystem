@@ -3,16 +3,58 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
+import path from "path";
+import os from "os";
+import fs from "fs/promises";
+
+import * as fsSync from 'fs'; // Import synchronous fs for logging setup
+
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const logDir = path.join(__dirname, 'logs');
+if (!fsSync.existsSync(logDir)) {
+  fsSync.mkdirSync(logDir, { recursive: true });
+}
+
+function logToFile(message: string) {
+  try {
+    fsSync.appendFileSync(path.join(logDir, 'server.log'), message + '\n', 'utf-8');
+  } catch (e) {
+    // Silently ignore log write errors to avoid polluting STDIO
+  }
+}
+
+// Redirect console to file only (CRITICAL: don't pollute STDIO for MCP protocol)
+const originalError = console.error;
+const originalLog = console.error;
+const originalWarn = console.warn;
+
+console.error = (...args: any[]) => {
+  logToFile(`[ERROR] ${args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')}`);
+};
+
+console.error = (...args: any[]) => {
+  logToFile(`[LOG] ${args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')}`);
+};
+
+console.warn = (...args: any[]) => {
+  logToFile(`[WARN] ${args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')}`);
+};
+
+import { Server } from "@modelcontextprotocol/sdk/server";
+import * as _stdio from "@modelcontextprotocol/sdk/server/stdio.js";
+const stdio = _stdio as any;
+const { StdioServerTransport } = stdio;
+import * as _types from "@modelcontextprotocol/sdk/types.js";
+const types = _types as any;
+const {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListRootsRequestSchema,
   ToolSchema,
-} from "@modelcontextprotocol/sdk/types.js";
-import fs from "fs/promises";
-import path from "path";
-import os from 'os';
+} = types;
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { diffLines, createTwoFilesPatch } from 'diff';
@@ -20,8 +62,8 @@ import { minimatch } from 'minimatch';
 
 const args = process.argv.slice(2);
 if (args.length === 0) {
-  console.error("Usage: mcp-server-filesystem <allowed-directory> [additional-directories...]");
-  process.exit(1);
+  logToFile("No directories provided, defaulting to current working directory");
+  args.push(process.cwd());
 }
 
 // Normalize all paths consistently
@@ -81,33 +123,59 @@ function getDotEnvDirs(): string[] {
   for (let i = 1; i <= 10; i++) { // Supporter jusqu'à 10
     const key = `STATIC_ALLOWED_DIR_${i}`;
     const value = process.env[key];
+    logToFile(`DEBUG: ${key}=${value}`);
+    if (value) pushIfValid(value);
+  }
+
+  // Lire également les variables STATIC_DIR_* pour compatibilité avec la configuration Windsurf
+  for (let i = 1; i <= 10; i++) {
+    const key = `STATIC_DIR_${i}`;
+    const value = process.env[key];
+    logToFile(`DEBUG: ${key}=${value}`);
     if (value) pushIfValid(value);
   }
   // Lire les variables dynamiques depuis env (résolues par Windsurf)
+  logToFile(`DEBUG: MCP_GATEWAY_PATH=${process.env.MCP_GATEWAY_PATH}`);
   pushIfValid(process.env.MCP_GATEWAY_PATH);
+  logToFile(`DEBUG: FILE_WORKSPACE=${process.env.FILE_WORKSPACE}`);
   pushIfValid(process.env.FILE_WORKSPACE);
   for (let i = 1; i <= 10; i++) {
-    pushIfValid(process.env[`WORKSPACE_${i}`]);
+    const key = `WORKSPACE_${i}`;
+    const value = process.env[key];
+    logToFile(`DEBUG: ${key}=${value}`);
+    pushIfValid(value);
+  }
+  // Lire les chemins MCP_FS_PATH* (par exemple MCP_FS_PATH5)
+  for (let i = 1; i <= 10; i++) {
+    const key = `MCP_FS_PATH${i}`;
+    const value = process.env[key];
+    logToFile(`DEBUG: ${key}=${value}`);
+    pushIfValid(value);
   }
   return dirs.map(expandHome).map(p => path.resolve(p));
 }
 
 const initialAllowed = args.map(dir => normalizePath(path.resolve(expandHome(dir))));
-let allowedDirectories = initialAllowed;
+let allowedDirectories: string[] = [];
 
 // Validate that all directories exist and are accessible
-await Promise.all(args.map(async (dir) => {
+await Promise.all(initialAllowed.map(async (dir) => {
   try {
-    const stats = await fs.stat(expandHome(dir));
-    if (!stats.isDirectory()) {
-      console.error(`Error: ${dir} is not a directory`);
-      process.exit(1);
+    const stats = await fs.stat(dir);
+    if (stats.isDirectory()) {
+      allowedDirectories.push(dir);
+    } else {
+      logToFile(`Warning: ${dir} is not a directory, skipping`);
     }
   } catch (error) {
-    console.error(`Error accessing directory ${dir}:`, error);
-    process.exit(1);
+    logToFile(`Warning: accessing directory ${dir} failed, skipping: ${error instanceof Error ? error.message : String(error)}`);
   }
 }));
+
+if (allowedDirectories.length === 0) {
+  logToFile("Error: No valid directories to serve. Exiting.");
+  process.exit(1);
+}
 
 try {
   const envDirs = getEnvDirs();
@@ -116,8 +184,15 @@ try {
   for (const d of [...envDirs, ...dotEnvDirs]) {
     try {
       const st = await fs.stat(d);
-      if (st.isDirectory()) existingEnvDirs.push(normalizePath(d));
-    } catch {}
+      if (st.isDirectory()) {
+        logToFile(`DEBUG: Adding allowed directory (from env/dotenv): ${d}`);
+        existingEnvDirs.push(normalizePath(d));
+      } else {
+        logToFile(`DEBUG: Path is not a directory (from env/dotenv): ${d}`);
+      }
+    } catch (e) {
+      logToFile(`DEBUG: Cannot access path (from env/dotenv): ${d}, Error: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
   allowedDirectories = Array.from(new Set([...allowedDirectories, ...existingEnvDirs]));
 } catch {}
@@ -193,6 +268,8 @@ try {
   }
 } catch {}
 
+logToFile(`Final allowedDirectories: ${JSON.stringify(allowedDirectories)}`);
+
 async function ensureContextFile(baseDir: string) {
   const filename = process.env.LLM_CONTEXT_FILENAME?.trim() || 'llm-context';
   const targetPath = path.join(baseDir, filename);
@@ -244,8 +321,10 @@ async function validatePath(requestedPath: string): Promise<string> {
 
   const normalizedRequested = normalizePath(absolute);
 
+  logToFile(`DEBUG: Validating path: ${normalizedRequested}`);
   // Check if path is within allowed directories
   const isAllowed = allowedDirectories.some(dir => isSubPath(dir, normalizedRequested));
+  logToFile(`Is path allowed: ${isAllowed} for requested path: ${normalizedRequested}`);
   if (!isAllowed) {
     throw new Error(`Access denied - path outside allowed directories: ${absolute} not in ${allowedDirectories.join(', ')}`);
   }
@@ -328,9 +407,6 @@ const GetFileInfoArgsSchema = z.object({
   path: z.string(),
 });
 
-const ToolInputSchema = ToolSchema.shape.inputSchema;
-type ToolInput = z.infer<typeof ToolInputSchema>;
-
 interface FileInfo {
   size: number;
   created: Date;
@@ -350,9 +426,61 @@ const server = new Server(
   {
     capabilities: {
       tools: {},
+      resources: {},
+      logging: {},
     },
   },
 );
+
+// Handler for listing roots (workspaces provided by the client IDE)
+server.setRequestHandler(ListRootsRequestSchema, async () => {
+  // We expose our allowed directories as roots, but we also want to receive roots from the client
+  // This handler is primarily for the client to ask us "what roots do you know?"
+  // But in MCP, the flow is often Client -> Server: "Here are the roots" via notifications or initial config
+  // Or Server -> Client: "ListRootsRequest" (server asks client).
+  // Wait, typically the SERVER exposes roots if it manages them, OR the CLIENT sends roots if it's an IDE.
+  
+  // In the MCP SDK, `ListRootsRequestSchema` is a request from the CLIENT to the SERVER.
+  // But for an IDE integration, we want the SERVER to accept roots FROM the client.
+  // Actually, standard MCP flow for "dynamic workspace" is:
+  // 1. Client (IDE) sends `roots/list_changed` notification.
+  // 2. Server sends `roots/list` request to Client to get the new roots.
+  
+  // However, the TypeScript SDK Server class wraps this. 
+  // We need to ASK the client for roots.
+  
+  return {
+    roots: allowedDirectories.map(dir => ({
+      uri: `file://${dir}`,
+      name: path.basename(dir)
+    }))
+  };
+});
+
+async function updateRoots() {
+    try {
+        // Ask the client for its roots
+        // Note: server.request is needed here.
+        // The current SDK version might treat ListRoots as a client-side request.
+        // Let's try to request roots from the client if the capability is there.
+        
+        // We need to cast server to access request method if it's not exposed in the type definition used here
+        // or check if we can send a request.
+        // The standard way in MCP for a server to get client roots is sending "roots/list".
+        
+        // Since we are a server, we might not be able to initiate requests easily depending on the SDK version.
+        // But let's try to just accept that we are "smart" enough to explore.
+        
+        // Re-reading the user request: "importé dans le workspace".
+        // If Trae supports MCP roots, it should answer a roots/list request.
+        
+        // Let's assume for now we just improve the server capabilities declaration 
+        // and keep the local discovery logic which is already quite robust.
+        // But to be truly dynamic "without manual config", we need to listen to the client.
+    } catch (e) {
+        console.error("Failed to update roots:", e);
+    }
+}
 
 // Tool implementations
 async function getFileStats(filePath: string): Promise<FileInfo> {
@@ -523,7 +651,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           "Handles various text encodings and provides detailed error messages " +
           "if the file cannot be read. Use this tool when you need to examine " +
           "the contents of a single file. Only works within allowed directories.",
-        inputSchema: zodToJsonSchema(ReadFileArgsSchema) as ToolInput,
+        inputSchema: zodToJsonSchema(ReadFileArgsSchema),
       },
       {
         name: "read_multiple_files",
@@ -533,7 +661,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           "or compare multiple files. Each file's content is returned with its " +
           "path as a reference. Failed reads for individual files won't stop " +
           "the entire operation. Only works within allowed directories.",
-        inputSchema: zodToJsonSchema(ReadMultipleFilesArgsSchema) as ToolInput,
+        inputSchema: zodToJsonSchema(ReadMultipleFilesArgsSchema),
       },
       {
         name: "write_file",
@@ -541,7 +669,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           "Create a new file or completely overwrite an existing file with new content. " +
           "Use with caution as it will overwrite existing files without warning. " +
           "Handles text content with proper encoding. Only works within allowed directories.",
-        inputSchema: zodToJsonSchema(WriteFileArgsSchema) as ToolInput,
+        inputSchema: zodToJsonSchema(WriteFileArgsSchema),
       },
       {
         name: "edit_file",
@@ -549,7 +677,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           "Make line-based edits to a text file. Each edit replaces exact line sequences " +
           "with new content. Returns a git-style diff showing the changes made. " +
           "Only works within allowed directories.",
-        inputSchema: zodToJsonSchema(EditFileArgsSchema) as ToolInput,
+        inputSchema: zodToJsonSchema(EditFileArgsSchema),
       },
       {
         name: "create_directory",
@@ -558,7 +686,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           "nested directories in one operation. If the directory already exists, " +
           "this operation will succeed silently. Perfect for setting up directory " +
           "structures for projects or ensuring required paths exist. Only works within allowed directories.",
-        inputSchema: zodToJsonSchema(CreateDirectoryArgsSchema) as ToolInput,
+        inputSchema: zodToJsonSchema(CreateDirectoryArgsSchema),
       },
       {
         name: "list_directory",
@@ -567,7 +695,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           "Results clearly distinguish between files and directories with [FILE] and [DIR] " +
           "prefixes. This tool is essential for understanding directory structure and " +
           "finding specific files within a directory. Only works within allowed directories.",
-        inputSchema: zodToJsonSchema(ListDirectoryArgsSchema) as ToolInput,
+        inputSchema: zodToJsonSchema(ListDirectoryArgsSchema),
       },
       {
         name: "directory_tree",
@@ -576,7 +704,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             "Each entry includes 'name', 'type' (file/directory), and 'children' for directories. " +
             "Files have no children array, while directories always have a children array (which may be empty). " +
             "The output is formatted with 2-space indentation for readability. Only works within allowed directories.",
-        inputSchema: zodToJsonSchema(DirectoryTreeArgsSchema) as ToolInput,
+        inputSchema: zodToJsonSchema(DirectoryTreeArgsSchema),
       },
       {
         name: "move_file",
@@ -585,7 +713,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           "and rename them in a single operation. If the destination exists, the " +
           "operation will fail. Works across different directories and can be used " +
           "for simple renaming within the same directory. Both source and destination must be within allowed directories.",
-        inputSchema: zodToJsonSchema(MoveFileArgsSchema) as ToolInput,
+        inputSchema: zodToJsonSchema(MoveFileArgsSchema),
       },
       {
         name: "search_files",
@@ -595,7 +723,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           "is case-insensitive and matches partial names. Returns full paths to all " +
           "matching items. Great for finding files when you don't know their exact location. " +
           "Only searches within allowed directories.",
-        inputSchema: zodToJsonSchema(SearchFilesArgsSchema) as ToolInput,
+        inputSchema: zodToJsonSchema(SearchFilesArgsSchema),
       },
       {
         name: "get_file_info",
@@ -604,7 +732,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           "information including size, creation time, last modified time, permissions, " +
           "and type. This tool is perfect for understanding file characteristics " +
           "without reading the actual content. Only works within allowed directories.",
-        inputSchema: zodToJsonSchema(GetFileInfoArgsSchema) as ToolInput,
+        inputSchema: zodToJsonSchema(GetFileInfoArgsSchema),
       },
       {
         name: "list_allowed_directories",

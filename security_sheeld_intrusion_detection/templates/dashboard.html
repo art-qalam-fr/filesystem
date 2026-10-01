@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Shield - Tableau de Bord de Détection d'Intrusion</title>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #333;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 20px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: #e8f5e8;
+            border-radius: 20px;
+            color: #2e7d32;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            background: #4caf50;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 1.5rem;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .stat-title {
+            font-size: 0.9rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stat-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .stat-change {
+            font-size: 0.8rem;
+            margin-top: 0.5rem;
+        }
+
+        .positive { color: #4caf50; }
+        .negative { color: #f44336; }
+        .neutral { color: #ff9800; }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .card-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .events-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .event-item {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background 0.3s ease;
+        }
+
+        .event-item:hover {
+            background: #f8f9fa;
+        }
+
+        .event-severity {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 1rem;
+            flex-shrink: 0;
+        }
+
+        .severity-low { background: #4caf50; }
+        .severity-medium { background: #ff9800; }
+        .severity-high { background: #f44336; }
+        .severity-critical { background: #9c27b0; }
+
+        .event-details {
+            flex: 1;
+        }
+
+        .event-type {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 0.25rem;
+        }
+
+        .event-meta {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .event-ip {
+            font-family: monospace;
+            background: #f0f0f0;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            margin-right: 0.5rem;
+        }
+
+        .banned-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .banned-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .banned-info {
+            flex: 1;
+        }
+
+        .banned-ip {
+            font-family: monospace;
+            font-weight: 600;
+            color: #f44336;
+            margin-bottom: 0.25rem;
+        }
+
+        .banned-reason {
+            font-size: 0.8rem;
+            color: #666;
+            margin-bottom: 0.25rem;
+        }
+
+        .banned-time {
+            font-size: 0.7rem;
+            color: #999;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn-unban {
+            background: #4caf50;
+            color: white;
+        }
+
+        .btn-unban:hover {
+            background: #45a049;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 1rem;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .btn-control {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+            background: white;
+            margin: 5% auto;
+            padding: 2rem;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 500px;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+        }
+
+        @media (max-width: 768px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .controls {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">🛡️</div>
+            <h1>Security Shield</h1>
+        </div>
+        <div class="status-indicator">
+            <div class="status-dot"></div>
+            <span id="connection-status">Connecté</span>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Statistiques principales -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Événements totaux</span>
+                    <div class="stat-icon" style="background: #e3f2fd; color: #2196f3;">📊</div>
+                </div>
+                <div class="stat-value" id="total-events">0</div>
+                <div class="stat-change neutral">Dernières 24h</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">IP uniques</span>
+                    <div class="stat-icon" style="background: #f3e5f5; color: #9c27b0;">🌐</div>
+                </div>
+                <div class="stat-value" id="unique-ips">0</div>
+                <div class="stat-change neutral">Dernières 24h</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">Menaces élevées</span>
+                    <div class="stat-icon" style="background: #ffebee; color: #f44336;">⚠️</div>
+                </div>
+                <div class="stat-value" id="high-severity">0</div>
+                <div class="stat-change negative">Nécessite attention</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-title">IP bannies</span>
+                    <div class="stat-icon" style="background: #e8f5e8; color: #4caf50;">🚫</div>
+                </div>
+                <div class="stat-value" id="banned-ips">0</div>
+                <div class="stat-change positive">Actuellement bloquées</div>
+            </div>
+        </div>
+
+        <!-- Contrôles -->
+        <div class="controls">
+            <button class="btn-control btn-primary" onclick="refreshData()">🔄 Actualiser</button>
+            <button class="btn-control btn-secondary" onclick="showWhitelistModal()">📋 Whitelist</button>
+            <button class="btn-control btn-secondary" onclick="showConfigModal()">⚙️ Configuration</button>
+            <button class="btn-control btn-danger" onclick="clearBans()">🗑️ Tout débannir</button>
+        </div>
+
+        <!-- Grille principale -->
+        <div class="main-grid">
+            <!-- Événements récents -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Événements récents</h2>
+                    <select id="events-filter" onchange="filterEvents()">
+                        <option value="6">6 dernières heures</option>
+                        <option value="12">12 dernières heures</option>
+                        <option value="24">24 dernières heures</option>
+                    </select>
+                </div>
+                <div class="events-list" id="events-list">
+                    <div class="loading">Chargement des événements...</div>
+                </div>
+            </div>
+
+            <!-- IP bannies -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">IP bannies</h2>
+                    <span id="banned-count" style="color: #f44336; font-weight: bold;">0</span>
+                </div>
+                <div class="banned-list" id="banned-list">
+                    <div class="loading">Chargement des IP bannies...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Graphiques -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Types d'attaques détectées</h2>
+            </div>
+            <div class="chart-container">
+                <canvas id="attacks-chart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Whitelist -->
+    <div id="whitelist-modal" class="modal">
+        <div class="modal-content">
+            <h2>Gestion de la Whitelist</h2>
+            <div class="form-group">
+                <label class="form-label">Ajouter une IP à la whitelist:</label>
+                <input type="text" id="whitelist-ip" class="form-input" placeholder="192.168.1.1">
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                <button class="btn-control btn-primary" onclick="addToWhitelist()">Ajouter</button>
+                <button class="btn-control btn-secondary" onclick="closeWhitelistModal()">Fermer</button>
+            </div>
+            <div id="whitelist-list" style="margin-top: 1rem; max-height: 200px; overflow-y: auto;"></div>
+        </div>
+    </div>
+
+    <!-- Modal Configuration -->
+    <div id="config-modal" class="modal">
+        <div class="modal-content">
+            <h2>Configuration</h2>
+            <div class="form-group">
+                <label class="form-label">Seuil d'échecs de connexion:</label>
+                <input type="number" id="failed-login-threshold" class="form-input" min="1" max="20">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Durée de bannissement (secondes):</label>
+                <input type="number" id="ban-duration" class="form-input" min="60" max="86400">
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                <button class="btn-control btn-primary" onclick="saveConfig()">Sauvegarder</button>
+                <button class="btn-control btn-secondary" onclick="closeConfigModal()">Fermer</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Socket.IO connection
+        const socket = io();
+        
+        // Chart.js instance
+        let attacksChart = null;
+
+        // Socket events
+        socket.on('connect', function() {
+            document.getElementById('connection-status').textContent = 'Connecté';
+            document.querySelector('.status-dot').style.background = '#4caf50';
+        });
+
+        socket.on('disconnect', function() {
+            document.getElementById('connection-status').textContent = 'Déconnecté';
+            document.querySelector('.status-dot').style.background = '#f44336';
+        });
+
+        socket.on('dashboard_update', function(data) {
+            updateDashboard(data);
+        });
+
+        // Update dashboard
+        function updateDashboard(data) {
+            // Update statistics
+            document.getElementById('total-events').textContent = data.statistics.total_events || 0;
+            document.getElementById('unique-ips').textContent = data.statistics.unique_ips || 0;
+            document.getElementById('high-severity').textContent = data.statistics.high_severity || 0;
+            document.getElementById('banned-ips').textContent = data.statistics.banned_ips || 0;
+            document.getElementById('banned-count').textContent = data.active_bans || 0;
+
+            // Update attacks chart
+            updateAttacksChart(data.top_attacks);
+
+            // Update events list
+            updateEventsList(data.recent_events);
+
+            // Update banned list
+            updateBannedList();
+        }
+
+        // Update attacks chart
+        function updateAttacksChart(attacks) {
+            const ctx = document.getElementById('attacks-chart').getContext('2d');
+            
+            if (attacksChart) {
+                attacksChart.destroy();
+            }
+
+            attacksChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: attacks.map(a => a.type),
+                    datasets: [{
+                        data: attacks.map(a => a.count),
+                        backgroundColor: [
+                            '#f44336',
+                            '#ff9800',
+                            '#4caf50',
+                            '#2196f3',
+                            '#9c27b0'
+                        ],
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update events list
+        function updateEventsList(events) {
+            const container = document.getElementById('events-list');
+            
+            if (!events || events.length === 0) {
+                container.innerHTML = '<div class="loading">Aucun événement récent</div>';
+                return;
+            }
+
+            container.innerHTML = events.map(event => `
+                <div class="event-item">
+                    <div class="event-severity severity-${event.severity.toLowerCase()}"></div>
+                    <div class="event-details">
+                        <div class="event-type">${event.type}</div>
+                        <div class="event-meta">
+                            <span class="event-ip">${event.source_ip}</span>
+                            <span>${new Date(event.timestamp).toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Update banned list
+        function updateBannedList() {
+            fetch('/api/banned')
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('banned-list');
+                    
+                    if (!data || data.length === 0) {
+                        container.innerHTML = '<div class="loading">Aucune IP bannie</div>';
+                        return;
+                    }
+
+                    container.innerHTML = data.map(banned => `
+                        <div class="banned-item">
+                            <div class="banned-info">
+                                <div class="banned-ip">${banned.ip}</div>
+                                <div class="banned-reason">${banned.reason}</div>
+                                <div class="banned-time">${new Date(banned.ban_time).toLocaleString()}</div>
+                            </div>
+                            ${banned.active ? `<button class="btn btn-unban" onclick="unbanIP('${banned.ip}')">Débannir</button>` : ''}
+                        </div>
+                    `).join('');
+                })
+                .catch(error => {
+                    console.error('Error fetching banned IPs:', error);
+                });
+        }
+
+        // Control functions
+        function refreshData() {
+            fetch('/api/dashboard')
+                .then(response => response.json())
+                .then(data => updateDashboard(data))
+                .catch(error => console.error('Error refreshing data:', error));
+        }
+
+        function unbanIP(ip) {
+            if (confirm(`Débannir l'IP ${ip} ?`)) {
+                fetch('/api/unban', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ ip: ip })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        updateBannedList();
+                        refreshData();
+                    } else {
+                        alert('Erreur: ' + data.error);
+                    }
+                })
+                .catch(error => console.error('Error unbanning IP:', error));
+            }
+        }
+
+        function clearBans() {
+            if (confirm('Débannir toutes les IP ? Cette action est irréversible.')) {
+                fetch('/api/banned')
+                    .then(response => response.json())
+                    .then(data => {
+                        data.forEach(banned => {
+                            if (banned.active) {
+                                unbanIP(banned.ip);
+                            }
+                        });
+                    });
+            }
+        }
+
+        // Modal functions
+        function showWhitelistModal() {
+            document.getElementById('whitelist-modal').style.display = 'block';
+            loadWhitelist();
+        }
+
+        function closeWhitelistModal() {
+            document.getElementById('whitelist-modal').style.display = 'none';
+        }
+
+        function showConfigModal() {
+            document.getElementById('config-modal').style.display = 'block';
+            loadConfig();
+        }
+
+        function closeConfigModal() {
+            document.getElementById('config-modal').style.display = 'none';
+        }
+
+        function loadWhitelist() {
+            fetch('/api/whitelist')
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('whitelist-list');
+                    container.innerHTML = data.whitelist.map(ip => `
+                        <div style="padding: 0.5rem; background: #f0f0f0; margin-bottom: 0.5rem; border-radius: 4px;">
+                            ${ip}
+                        </div>
+                    `).join('');
+                });
+        }
+
+        function addToWhitelist() {
+            const ip = document.getElementById('whitelist-ip').value.trim();
+            if (!ip) return;
+
+            fetch('/api/whitelist', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ action: 'add', ip: ip })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('whitelist-ip').value = '';
+                    loadWhitelist();
+                } else {
+                    alert('Erreur: ' + data.error);
+                }
+            });
+        }
+
+        function loadConfig() {
+            fetch('/api/config')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('failed-login-threshold').value = data.failed_login_threshold || 5;
+                    document.getElementById('ban-duration').value = data.ban_duration || 3600;
+                });
+        }
+
+        function saveConfig() {
+            const config = {
+                failed_login_threshold: parseInt(document.getElementById('failed-login-threshold').value),
+                ban_duration: parseInt(document.getElementById('ban-duration').value)
+            };
+
+            fetch('/api/config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(config)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    closeConfigModal();
+                    alert('Configuration sauvegardée');
+                } else {
+                    alert('Erreur: ' + data.error);
+                }
+            });
+        }
+
+        function filterEvents() {
+            const hours = document.getElementById('events-filter').value;
+            fetch(`/api/events?hours=${hours}&limit=50`)
+                .then(response => response.json())
+                .then(events => updateEventsList(events));
+        }
+
+        // Close modals when clicking outside
+        window.onclick = function(event) {
+            if (event.target.classList.contains('modal')) {
+                event.target.style.display = 'none';
+            }
+        }
+
+        // Initial load
+        refreshData();
+        updateBannedList();
+    </script>
+</body>
+</html>
