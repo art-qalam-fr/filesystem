@@ -4,8 +4,8 @@
 Write-Host "🚀 Copie du projet Lottery Prediction AI..." -ForegroundColor Green
 
 # Répertoires
-$source = "F:\Promgramation-teste\servers\filesystem\lottery-prediction-ai"
-$destination = "F:\Promgramation-teste\marotte\lottery-prediction-ai"
+$source = "<HEPHAISTOS_ROOT>"
+$destination = "<HEPHAISTOS_ROOT>"
 
 # Créer le répertoire de destination s'il n'existe pas
 if (!(Test-Path $destination)) {

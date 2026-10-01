@@ -4,7 +4,7 @@ description: PRD – Évolutions du serveur MCP filesystem pour support des work
 
 # 1. Contexte
 
-- IDE : Windsurf (fichier de config MCP : `c:/Users/Administrator/.codeium/windsurf/mcp_config.json`).
+- IDE : Windsurf (fichier de config MCP : `<USERPROFILE>
 - Serveur : MCP `filesystem` (repo : `f:/Promgramation-teste/servers/filesystem`).
 - Point d’entrée : `dist/index.js` compilé depuis `index.ts`.
 - Problème initial :
@@ -53,8 +53,8 @@ description: PRD – Évolutions du serveur MCP filesystem pour support des work
    "filesystem": {
      "command": "node",
      "args": [
-       "F:/Promgramation-teste/servers/filesystem/dist/index.js",
-       "F:/Promgramation-teste/servers/",
+       "<HEPHAISTOS_ROOT>",
+       "<HEPHAISTOS_ROOT>",
        "C:/Users/Administrator/Desktop/"
      ],
      ...
@@ -196,26 +196,26 @@ Conséquences :
 
 # 5. Configuration recommandée pour l’IDE
 
-Fichier : `c:/Users/Administrator/.codeium/windsurf/mcp_config.json` (extrait).
+Fichier : `<USERPROFILE> (extrait).
 
 ```jsonc
 "filesystem": {
   "command": "node",
   "args": [
-    "F:/Promgramation-teste/servers/filesystem/dist/index.js",
-    "F:/Promgramation-teste/servers/",      // racine de tous les serveurs
+    "<HEPHAISTOS_ROOT>",
+    "<HEPHAISTOS_ROOT>",      // racine de tous les serveurs
     "C:/Users/Administrator/Desktop/"
   ],
   "disabled": false,
   "disabledTools": [],
   "env": {
-    "MCP_FS_PATH5": "F:/Promgramation-teste/servers/filesystem",
+    "MCP_FS_PATH5": "<HEPHAISTOS_ROOT>",
     "FILE_WORKSPACE": "${fileWorkspaceFolder}",
-    "MCP_GATEWAY_PATH": "F:/Promgramation-teste/servers/projet-gateway/",
+    "MCP_GATEWAY_PATH": "<HEPHAISTOS_ROOT>",
 
     "STATIC_DIR_1": "C:/Users/Administrator/",
     "STATIC_DIR_2": "C:/Users/Administrator/Desktop/",
-    "STATIC_DIR_3": "F:/Promgramation-teste/servers/",
+    "STATIC_DIR_3": "<HEPHAISTOS_ROOT>",
 
     "WORKSPACE_1": "${workspaceFolder:1}",
     "WORKSPACE_2": "${workspaceFolder:2}",
@@ -231,16 +231,16 @@ Fichier : `f:/Promgramation-teste/servers/filesystem/.env` (exemple minimal).
 
 ```env
 # Répertoires statiques autorisés
-STATIC_ALLOWED_DIR_1=F:/Promgramation-teste/servers
+STATIC_ALLOWED_DIR_1=<HEPHAISTOS_ROOT>
 STATIC_ALLOWED_DIR_2=C:/Users/Administrator/Desktop
 
 # Compatibilité avec la config Windsurf (également lus)
 STATIC_DIR_1=C:/Users/Administrator/
 STATIC_DIR_2=C:/Users/Administrator/Desktop/
-STATIC_DIR_3=F:/Promgramation-teste/servers/
+STATIC_DIR_3=<HEPHAISTOS_ROOT>
 
 # Chemin explicite vers le serveur filesystem lui-même
-MCP_FS_PATH5=F:/Promgramation-teste/servers/filesystem
+MCP_FS_PATH5=<HEPHAISTOS_ROOT>
 
 # Inclure éventuellement le répertoire courant comme contexte
 MCP_INCLUDE_ACTIVE_ENVS=true
@@ -260,9 +260,9 @@ MCP_INCLUDE_ACTIVE_ENVS=true
 1. **list_allowed_directories**
    - Appeler l’outil `list_allowed_directories` du serveur filesystem.
    - Vérifier la présence de :
-     - `F:/Promgramation-teste/servers/`
+     - `<HEPHAISTOS_ROOT>
      - les workspaces IDE (`FILE_WORKSPACE`, `WORKSPACE_n`),
-     - éventuellement `F:/Promgramation-teste/servers/filesystem`.
+     - éventuellement `<HEPHAISTOS_ROOT>
 
 2. **Accès à un sous-répertoire d’un workspace IDE**
    - Depuis l’IDE, ouvrir un workspace `W`.
