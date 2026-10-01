@@ -5,7 +5,7 @@ description: PRD – Évolutions du serveur MCP filesystem pour support des work
 # 1. Contexte
 
 - IDE : Windsurf (fichier de config MCP : `<USERPROFILE>
-- Serveur : MCP `filesystem` (repo : `f:/Promgramation-teste/servers/filesystem`).
+- Serveur : MCP `filesystem` (repo : `<HEPHAISTOS_ROOT>/servers/filesystem`).
 - Point d’entrée : `dist/index.js` compilé depuis `index.ts`.
 - Problème initial :
   - Le serveur n’autorisait que quelques répertoires statiques (ex. projet-gateway, Desktop).
@@ -55,7 +55,7 @@ description: PRD – Évolutions du serveur MCP filesystem pour support des work
      "args": [
        "<HEPHAISTOS_ROOT>",
        "<HEPHAISTOS_ROOT>",
-       "C:/Users/Administrator/Desktop/"
+       "<USERPROFILE>/Desktop/"
      ],
      ...
    }
@@ -78,7 +78,7 @@ description: PRD – Évolutions du serveur MCP filesystem pour support des work
    dotenv.config();
    ```
 
-   Le fichier `f:/Promgramation-teste/servers/filesystem/.env` est donc chargé au démarrage.
+   Le fichier `<HEPHAISTOS_ROOT>/servers/filesystem/.env` est donc chargé au démarrage.
 
 3. **Enrichissement des `allowedDirectories`**
 
@@ -204,7 +204,7 @@ Fichier : `<USERPROFILE> (extrait).
   "args": [
     "<HEPHAISTOS_ROOT>",
     "<HEPHAISTOS_ROOT>",      // racine de tous les serveurs
-    "C:/Users/Administrator/Desktop/"
+    "<USERPROFILE>/Desktop/"
   ],
   "disabled": false,
   "disabledTools": [],
@@ -213,8 +213,8 @@ Fichier : `<USERPROFILE> (extrait).
     "FILE_WORKSPACE": "${fileWorkspaceFolder}",
     "MCP_GATEWAY_PATH": "<HEPHAISTOS_ROOT>",
 
-    "STATIC_DIR_1": "C:/Users/Administrator/",
-    "STATIC_DIR_2": "C:/Users/Administrator/Desktop/",
+    "STATIC_DIR_1": "<USERPROFILE>/",
+    "STATIC_DIR_2": "<USERPROFILE>/Desktop/",
     "STATIC_DIR_3": "<HEPHAISTOS_ROOT>",
 
     "WORKSPACE_1": "${workspaceFolder:1}",
@@ -227,16 +227,16 @@ Fichier : `<USERPROFILE> (extrait).
 
 # 6. Exemple de `.env` pour le serveur filesystem
 
-Fichier : `f:/Promgramation-teste/servers/filesystem/.env` (exemple minimal).
+Fichier : `<HEPHAISTOS_ROOT>/servers/filesystem/.env` (exemple minimal).
 
 ```env
 # Répertoires statiques autorisés
 STATIC_ALLOWED_DIR_1=<HEPHAISTOS_ROOT>
-STATIC_ALLOWED_DIR_2=C:/Users/Administrator/Desktop
+STATIC_ALLOWED_DIR_2=<USERPROFILE>/Desktop
 
 # Compatibilité avec la config Windsurf (également lus)
-STATIC_DIR_1=C:/Users/Administrator/
-STATIC_DIR_2=C:/Users/Administrator/Desktop/
+STATIC_DIR_1=<USERPROFILE>/
+STATIC_DIR_2=<USERPROFILE>/Desktop/
 STATIC_DIR_3=<HEPHAISTOS_ROOT>
 
 # Chemin explicite vers le serveur filesystem lui-même

@@ -1,10 +1,10 @@
 {
-  "workspace": "F:\\Promgramation-teste\\servers\\filesystem",
+  "workspace": "<HEPHAISTOS_ROOT>\\servers\\filesystem",
   "createdAt": "2025-11-25T21:33:24.941Z",
   "allowedDirectories": [
-    "F:\\Promgramation-teste\\servers\\filesystem",
-    "C:\\Users\\Administrator",
-    "C:\\Users\\Administrator\\Desktop"
+    "<HEPHAISTOS_ROOT>\\servers\\filesystem",
+    "<USERPROFILE>",
+    "<USERPROFILE>\\Desktop"
   ],
   "context": [],
   "version": 1
