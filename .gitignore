@@ -1,0 +1,43 @@
+# Fichiers et dossiers ignorés par Git pour des raisons de sécurité et de propreté du dépôt
+
+# Fichiers d'environnement
+.env
+
+# Fichiers de configuration sensibles
+config.json
+
+# Dossiers spécifiques au projet
+.llm-context/
+PRD/
+prd-templates/
+logs/
+
+# Dossiers de configuration de l'IDE et de l'environnement de développement
+.vscode/
+.devin/
+
+# Autres fichiers ou dossiers générés
+# (Ajoutez ici d'autres éléments si nécessaire, par exemple node_modules, build, dist, etc.)
+node_modules
+node_modules
+
+# snapshot kit
+.env
+*.env.local
+*.log
+*.pid
+__pycache__/
+*.backup
+node_modules/
+__pycache__/
+*.pyc
+security_sheeld_intrusion_detection/
+copy_project.ps1
+lottery-prediction-ai/
+main.py
+config.py
+compose.yaml
+PRD-filesystem-mcp.md
+requirements.txt
+llm-context/
+filesystem.code-workspace
