@@ -22,7 +22,7 @@
     "@modelcontextprotocol/sdk": "^1.24.3",
     "diff": "^5.1.0",
     "dotenv": "^16.4.5",
-    "glob": "^10.3.10",
+    "glob": "^13.0.6",
     "minimatch": "^10.0.1",
     "zod-to-json-schema": "^3.23.5"
   },
